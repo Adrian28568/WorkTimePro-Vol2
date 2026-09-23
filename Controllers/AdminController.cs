@@ -34,29 +34,23 @@ namespace WorkTimePro.Api.Controllers
 
             var totalWorkers = allUsers.Count;
             
-            // Active sessions today (not finished)
             var activeToday = allUsers.Count(u => 
                 u.WorkSessions.Any(s => s.StartTime.Date == today && !s.IsFinished));
             
-            // Currently working (active and not paused)
             var currentlyWorking = allUsers.Count(u => 
                 u.WorkSessions.Any(s => !s.IsFinished && !s.IsPaused));
             
-            // Currently paused
             var currentlyPaused = allUsers.Count(u => 
                 u.WorkSessions.Any(s => !s.IsFinished && s.IsPaused));
             
-            // Not clocked in today
             var notClockedIn = totalWorkers - allUsers.Count(u => 
                 u.WorkSessions.Any(s => s.StartTime.Date == today));
             
-            // Total minutes today
             var totalMinutesToday = allUsers
                 .SelectMany(u => u.WorkSessions)
                 .Where(s => s.StartTime.Date == today)
                 .Sum(s => s.WorkedMinutes);
 
-            // Calculate ACTUAL monthly payroll (all finished sessions this month)
             var monthlyPayroll = 0m;
             foreach (var user in allUsers)
             {
@@ -65,9 +59,7 @@ namespace WorkTimePro.Api.Controllers
                     .ToList();
                 
                 var totalMinutes = monthSessions.Sum(s => s.WorkedMinutes);
-                var hourlyRate = user.HourlyRate > 0 ? user.HourlyRate : 13m; // Default €13
-                
-                // €0.216 per minute (€13 per hour / 60 minutes)
+                var hourlyRate = user.HourlyRate > 0 ? user.HourlyRate : 13m;
                 var minuteRate = hourlyRate / 60m;
                 monthlyPayroll += totalMinutes * minuteRate;
             }
@@ -172,15 +164,12 @@ namespace WorkTimePro.Api.Controllers
             var hourlyRate = worker.HourlyRate > 0 ? worker.HourlyRate : 13m;
             var minuteRate = hourlyRate / 60m;
 
-            // Get all sessions for this month
             var monthlySessions = worker.WorkSessions
                 .Where(s => s.StartTime >= monthStart && s.StartTime < monthEnd)
                 .ToList();
 
-            // Build daily breakdown
             var dailyBreakdown = new List<object>();
             
-            // Only show days that have passed OR today
             var lastDayToShow = now.Date >= monthEnd ? daysInMonth : now.Day;
             
             for (int day = 1; day <= lastDayToShow; day++)
@@ -188,7 +177,7 @@ namespace WorkTimePro.Api.Controllers
                 var date = new DateTime(targetYear, targetMonth, day);
                 var dayOfWeek = date.ToString("dddd");
                 var isWeekend = date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
-                var isPastDay = date < now.Date; // Only count missed if day has passed
+                var isPastDay = date < now.Date;
 
                 var daySessions = monthlySessions.Where(s => s.StartTime.Date == date).ToList();
                 
@@ -199,7 +188,6 @@ namespace WorkTimePro.Api.Controllers
                     var totalWorked = daySessions.Sum(s => s.WorkedMinutes);
                     var totalPaused = daySessions.Sum(s => s.PausedMinutes);
                     
-                    // Convert minutes to proper hours and minutes
                     var hours = totalWorked / 60;
                     var minutes = totalWorked % 60;
                     var workedDisplay = $"{hours}h {minutes}m";
@@ -214,12 +202,11 @@ namespace WorkTimePro.Api.Controllers
                         workedDisplay,
                         pausedMinutes = totalPaused,
                         status = firstSession.IsFinished ? "Finished" : "Ongoing",
-                        isLongDay = totalWorked > 600 // >10 hours
+                        isLongDay = totalWorked > 600
                     });
                 }
                 else if (!isWeekend && isPastDay)
                 {
-                    // Missed day (only if weekday and already passed)
                     dailyBreakdown.Add(new
                     {
                         date = date.ToString("yyyy-MM-dd"),
@@ -235,7 +222,6 @@ namespace WorkTimePro.Api.Controllers
                 }
             }
 
-            // Calculate month summary
             var totalMonthMinutes = monthlySessions.Where(s => s.IsFinished).Sum(s => s.WorkedMinutes);
             var totalMonthHours = totalMonthMinutes / 60;
             var totalMonthMins = totalMonthMinutes % 60;
@@ -332,6 +318,158 @@ namespace WorkTimePro.Api.Controllers
                 monthName = monthNames[targetMonth],
                 workers = workerPayrolls,
                 grandTotal = Math.Round(grandTotal, 2)
+            });
+        }
+
+        // ========== 📊 NEW: MONTHLY TRENDS CHART DATA ==========
+        
+        [HttpGet("trends")]
+        public async Task<IActionResult> GetTrends([FromQuery] int months = 6)
+        {
+            var now = GetLocalTime();
+            var workers = await _db.Users
+                .Include(u => u.WorkSessions)
+                .Where(u => !u.IsAdmin)
+                .ToListAsync();
+
+            var trends = new List<object>();
+
+            for (int i = months - 1; i >= 0; i--)
+            {
+                var targetDate = now.AddMonths(-i);
+                var monthStart = new DateTime(targetDate.Year, targetDate.Month, 1);
+                var monthEnd = monthStart.AddMonths(1);
+
+                var monthSessions = workers
+                    .SelectMany(u => u.WorkSessions)
+                    .Where(s => s.StartTime >= monthStart && s.StartTime < monthEnd && s.IsFinished)
+                    .ToList();
+
+                var totalMinutes = monthSessions.Sum(s => s.WorkedMinutes);
+                var totalHours = (int)Math.Round(totalMinutes / 60.0);
+                var workersActive = monthSessions.Select(s => s.UserId).Distinct().Count();
+                var averageHoursPerWorker = workersActive > 0 ? totalHours / workersActive : 0;
+
+                trends.Add(new
+                {
+                    month = targetDate.ToString("MMM yyyy"),
+                    monthNumber = targetDate.Month,
+                    year = targetDate.Year,
+                    totalHours,
+                    totalMinutes,
+                    workersActive,
+                    averageHoursPerWorker,
+                    sessionsCount = monthSessions.Count
+                });
+            }
+
+            return Ok(new
+            {
+                trends,
+                summary = new
+                {
+                    period = $"Last {months} months",
+                    totalHours = trends.Sum(t => (int)t.GetType().GetProperty("totalHours")!.GetValue(t)!),
+                    averageMonthlyHours = trends.Any() ? 
+                        trends.Sum(t => (int)t.GetType().GetProperty("totalHours")!.GetValue(t)!) / trends.Count : 0
+                }
+            });
+        }
+
+        // ========== 📈 NEW: PRODUCTIVITY ANALYSIS ==========
+        
+        [HttpGet("productivity")]
+        public async Task<IActionResult> GetProductivityAnalysis([FromQuery] int? month, [FromQuery] int? year)
+        {
+            var now = GetLocalTime();
+            var targetYear = year ?? now.Year;
+            var targetMonth = month ?? now.Month;
+
+            var monthStart = new DateTime(targetYear, targetMonth, 1);
+            var monthEnd = monthStart.AddMonths(1);
+
+            var sessions = await _db.WorkSessions
+                .Include(s => s.User)
+                .Where(s => s.StartTime >= monthStart && s.StartTime < monthEnd && s.IsFinished && !s.User.IsAdmin)
+                .ToListAsync();
+
+            // Most productive days of week
+            var dayOfWeekStats = sessions
+                .GroupBy(s => s.StartTime.DayOfWeek)
+                .Select(g => new
+                {
+                    dayOfWeek = g.Key.ToString(),
+                    dayNumber = (int)g.Key,
+                    totalMinutes = g.Sum(s => s.WorkedMinutes),
+                    totalHours = (int)Math.Round(g.Sum(s => s.WorkedMinutes) / 60.0),
+                    sessionsCount = g.Count(),
+                    averageMinutesPerSession = (int)Math.Round(g.Average(s => s.WorkedMinutes))
+                })
+                .OrderBy(x => x.dayNumber)
+                .ToList();
+
+            // Peak hours (when workers start work most often)
+            var peakHours = sessions
+                .GroupBy(s => s.StartTime.Hour)
+                .Select(g => new
+                {
+                    hour = g.Key,
+                    hourDisplay = $"{g.Key:D2}:00",
+                    clockInsCount = g.Count(),
+                    totalMinutes = g.Sum(s => s.WorkedMinutes)
+                })
+                .OrderByDescending(x => x.clockInsCount)
+                .Take(5)
+                .ToList();
+
+            // Most productive workers
+            var topWorkers = sessions
+                .GroupBy(s => s.UserId)
+                .Select(g => new
+                {
+                    userId = g.Key,
+                    username = g.First().User.Username,
+                    totalMinutes = g.Sum(s => s.WorkedMinutes),
+                    totalHours = (int)Math.Round(g.Sum(s => s.WorkedMinutes) / 60.0),
+                    daysWorked = g.Select(s => s.StartTime.Date).Distinct().Count(),
+                    averageHoursPerDay = g.Select(s => s.StartTime.Date).Distinct().Count() > 0 ? 
+                        (int)Math.Round(g.Sum(s => s.WorkedMinutes) / 60.0 / g.Select(s => s.StartTime.Date).Distinct().Count()) : 0
+                })
+                .OrderByDescending(x => x.totalMinutes)
+                .Take(10)
+                .ToList();
+
+            // Daily productivity pattern
+            var dailyPattern = sessions
+                .GroupBy(s => s.StartTime.Date)
+                .Select(g => new
+                {
+                    date = g.Key.ToString("yyyy-MM-dd"),
+                    dayOfWeek = g.Key.DayOfWeek.ToString(),
+                    totalMinutes = g.Sum(s => s.WorkedMinutes),
+                    totalHours = (int)Math.Round(g.Sum(s => s.WorkedMinutes) / 60.0),
+                    workersActive = g.Select(s => s.UserId).Distinct().Count()
+                })
+                .OrderBy(x => x.date)
+                .ToList();
+
+            return Ok(new
+            {
+                month = targetMonth,
+                year = targetYear,
+                monthName = new DateTime(targetYear, targetMonth, 1).ToString("MMMM yyyy"),
+                dayOfWeekStats,
+                peakHours,
+                topWorkers,
+                dailyPattern,
+                summary = new
+                {
+                    totalSessions = sessions.Count,
+                    totalHours = (int)Math.Round(sessions.Sum(s => s.WorkedMinutes) / 60.0),
+                    mostProductiveDay = dayOfWeekStats.OrderByDescending(d => d.totalMinutes).FirstOrDefault()?.dayOfWeek,
+                    peakClockInHour = peakHours.FirstOrDefault()?.hourDisplay,
+                    averageSessionLength = sessions.Any() ? (int)Math.Round(sessions.Average(s => s.WorkedMinutes)) : 0
+                }
             });
         }
 

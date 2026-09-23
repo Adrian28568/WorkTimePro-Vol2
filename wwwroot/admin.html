@@ -12,7 +12,8 @@
             <div class="header-content">
                 <h1>HR Dashboard</h1>
                 <div class="header-actions">
-                    <button onclick="openPayrollOverview()" class="btn-payroll">📊 Monthly Payroll Overview</button>
+                    <button onclick="window.location.href='/analytics.html'" class="btn-analytics">📈 Analytics</button>
+                    <button onclick="openPayrollOverview()" class="btn-payroll">📊 Payroll</button>
                     <span id="adminName" class="admin-name"></span>
                     <button onclick="logout()" class="btn-secondary">Logout</button>
                 </div>
@@ -20,9 +21,8 @@
         </header>
 
         <main class="dashboard-main">
-            <!-- Stats Cards - NEW ORDER -->
+            <!-- Stats Cards -->
             <div class="stats-grid">
-                <!-- 1. Total Workers -->
                 <div class="stat-card">
                     <div class="stat-icon">👥</div>
                     <div class="stat-content">
@@ -31,7 +31,6 @@
                     </div>
                 </div>
                 
-                <!-- 2. Total Time Today -->
                 <div class="stat-card">
                     <div class="stat-icon">⏱️</div>
                     <div class="stat-content">
@@ -40,7 +39,6 @@
                     </div>
                 </div>
                 
-                <!-- 3. Monthly Payroll -->
                 <div class="stat-card">
                     <div class="stat-icon">💶</div>
                     <div class="stat-content">

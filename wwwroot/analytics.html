@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - WorkTimePro</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="dashboard">
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>📊 Analytics Dashboard</h1>
+                <div class="header-actions">
+                    <button onclick="window.location.href='/admin.html'" class="btn-secondary">← Back to Dashboard</button>
+                    <span id="adminName" class="admin-name"></span>
+                    <button onclick="logout()" class="btn-secondary">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-main">
+            
+            <!-- Month Selector -->
+            <div class="filter-section">
+                <h2>📅 Select Period</h2>
+                <div class="filter-controls">
+                    <label for="monthSelect">Month:</label>
+                    <select id="monthSelect" onchange="loadAnalytics()">
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                    
+                    <label for="yearSelect">Year:</label>
+                    <select id="yearSelect" onchange="loadAnalytics()">
+                        <option value="2023">2023</option>
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                    
+                    <label for="trendMonths">Trend Period:</label>
+                    <select id="trendMonths" onchange="loadTrends()">
+                        <option value="3">Last 3 Months</option>
+                        <option value="6" selected>Last 6 Months</option>
+                        <option value="12">Last 12 Months</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="analytics-summary">
+                <div class="summary-card">
+                    <div class="summary-icon">📊</div>
+                    <div class="summary-content">
+                        <h3 id="totalHours">0h</h3>
+                        <p>Total Hours This Month</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-icon">👥</div>
+                    <div class="summary-content">
+                        <h3 id="totalSessions">0</h3>
+                        <p>Work Sessions</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-icon">🏆</div>
+                    <div class="summary-content">
+                        <h3 id="mostProductiveDay">-</h3>
+                        <p>Most Productive Day</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-icon">⏰</div>
+                    <div class="summary-content">
+                        <h3 id="peakHour">-</h3>
+                        <p>Peak Clock-In Hour</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="charts-grid">
+                
+                <!-- Monthly Trends Chart -->
+                <div class="chart-container">
+                    <h3>📈 Monthly Trends</h3>
+                    <canvas id="trendsChart"></canvas>
+                </div>
+                
+                <!-- Day of Week Chart -->
+                <div class="chart-container">
+                    <h3>📅 Productivity by Day of Week</h3>
+                    <canvas id="dayOfWeekChart"></canvas>
+                </div>
+                
+                <!-- Peak Hours Chart -->
+                <div class="chart-container">
+                    <h3>⏰ Peak Clock-In Hours</h3>
+                    <canvas id="peakHoursChart"></canvas>
+                </div>
+                
+                <!-- Daily Pattern Chart -->
+                <div class="chart-container">
+                    <h3>📊 Daily Work Pattern</h3>
+                    <canvas id="dailyPatternChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Top Workers Table -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h2>🏆 Top Performers</h2>
+                </div>
+                
+                <table class="workers-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Worker</th>
+                            <th>Total Hours</th>
+                            <th>Days Worked</th>
+                            <th>Avg Hours/Day</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topWorkersBody">
+                        <tr>
+                            <td colspan="5" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+    
+    <script src="js/analytics.js"></script>
+</body>
+</html>

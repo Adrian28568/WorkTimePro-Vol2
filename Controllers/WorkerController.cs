@@ -11,9 +11,13 @@ namespace WorkTimePro.Api.Controllers
     {
         private readonly AppDbContext _db;
         
-        // Central European Time
-        private static readonly TimeZoneInfo CET = TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time");
+        // Central European Time zone (for accurate time tracking)
+        private static readonly TimeZoneInfo CET = 
+            TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time");
         
+        /// <summary>
+        /// Get current time in Central European timezone
+        /// </summary>
         private DateTime GetLocalTime() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, CET);
 
         public WorkerController(AppDbContext db)
@@ -21,21 +25,27 @@ namespace WorkTimePro.Api.Controllers
             _db = db;
         }
 
-        // ========== GET CURRENT SESSION ==========
+        // ═══════════════════════════════════════════════════════════
+        // GET CURRENT SESSION
+        // Check if worker has an active (unfinished) work session
+        // ═══════════════════════════════════════════════════════════
         
         [HttpGet("current-session")]
         public async Task<IActionResult> GetCurrentSession([FromQuery] int userId)
         {
+            // Find the most recent unfinished session for this worker
             var session = await _db.WorkSessions
                 .Where(s => s.UserId == userId && !s.IsFinished)
                 .OrderByDescending(s => s.StartTime)
                 .FirstOrDefaultAsync();
 
+            // No active session found
             if (session == null)
             {
                 return Ok(new { hasSession = false });
             }
 
+            // Return session details
             return Ok(new
             {
                 hasSession = true,
@@ -53,24 +63,27 @@ namespace WorkTimePro.Api.Controllers
             });
         }
 
-        // ========== START WORK ==========
+        // ═══════════════════════════════════════════════════════════
+        // START WORK
+        // Clock in - create new work session
+        // ═══════════════════════════════════════════════════════════
         
         [HttpPost("start")]
         public async Task<IActionResult> StartWork([FromBody] WorkerActionRequest request)
         {
-            // Check if user already has an active session
+            // Prevent starting if already have active session
             var existingSession = await _db.WorkSessions
                 .Where(s => s.UserId == request.UserId && !s.IsFinished)
                 .FirstOrDefaultAsync();
 
             if (existingSession != null)
             {
-                return BadRequest(new { error = "You already have an active work session today" });
+                return BadRequest(new { error = "You already have an active work session" });
             }
 
             var now = GetLocalTime();
 
-            // Create new session with LOCAL time
+            // Create new work session
             var newSession = new WorkSession
             {
                 UserId = request.UserId,
@@ -78,7 +91,6 @@ namespace WorkTimePro.Api.Controllers
                 IsPaused = false,
                 PausedMinutes = 0,
                 IsFinished = false,
-                CreatedAt = now,
                 UpdatedAt = now
             };
 
@@ -97,7 +109,10 @@ namespace WorkTimePro.Api.Controllers
             });
         }
 
-        // ========== PAUSE WORK ==========
+        // ═══════════════════════════════════════════════════════════
+        // PAUSE WORK
+        // Start a break - records pause start time
+        // ═══════════════════════════════════════════════════════════
         
         [HttpPost("pause")]
         public async Task<IActionResult> PauseWork([FromBody] WorkerActionRequest request)
@@ -118,6 +133,7 @@ namespace WorkTimePro.Api.Controllers
 
             var now = GetLocalTime();
 
+            // Set pause state
             session.IsPaused = true;
             session.CurrentPauseStartTime = now;
             session.UpdatedAt = now;
@@ -132,7 +148,10 @@ namespace WorkTimePro.Api.Controllers
             });
         }
 
-        // ========== RESUME WORK ==========
+        // ═══════════════════════════════════════════════════════════
+        // RESUME WORK
+        // End break - calculates break duration and adds to total
+        // ═══════════════════════════════════════════════════════════
         
         [HttpPost("resume")]
         public async Task<IActionResult> ResumeWork([FromBody] WorkerActionRequest request)
@@ -158,8 +177,10 @@ namespace WorkTimePro.Api.Controllers
 
             var now = GetLocalTime();
 
-            // Calculate pause duration and add to total
+            // Calculate how long this break was
             var pauseDuration = (int)(now - session.CurrentPauseStartTime.Value).TotalMinutes;
+            
+            // Add to total accumulated break time
             session.PausedMinutes += pauseDuration;
             
             // Clear pause state
@@ -178,7 +199,10 @@ namespace WorkTimePro.Api.Controllers
             });
         }
 
-        // ========== END DAY ==========
+        // ═══════════════════════════════════════════════════════════
+        // END WORK DAY
+        // Clock out - finishes the work session
+        // ═══════════════════════════════════════════════════════════
         
         [HttpPost("end")]
         public async Task<IActionResult> EndWork([FromBody] WorkerActionRequest request)
@@ -203,6 +227,7 @@ namespace WorkTimePro.Api.Controllers
                 session.CurrentPauseStartTime = null;
             }
 
+            // Mark session as finished
             session.EndTime = now;
             session.IsFinished = true;
             session.UpdatedAt = now;
@@ -219,7 +244,11 @@ namespace WorkTimePro.Api.Controllers
             });
         }
 
-        // ========== AUTO-END ON LOGOUT ==========
+        // ═══════════════════════════════════════════════════════════
+        // AUTO-END ON LOGOUT
+        // Automatically end session when worker logs out
+        // Prevents leaving sessions open indefinitely
+        // ═══════════════════════════════════════════════════════════
         
         [HttpPost("auto-end")]
         public async Task<IActionResult> AutoEndSession([FromBody] WorkerActionRequest request)
@@ -228,6 +257,7 @@ namespace WorkTimePro.Api.Controllers
                 .Where(s => s.UserId == request.UserId && !s.IsFinished)
                 .FirstOrDefaultAsync();
 
+            // No active session to end
             if (session == null)
             {
                 return Ok(new { message = "No active session to end" });
@@ -261,7 +291,10 @@ namespace WorkTimePro.Api.Controllers
             return Ok(new { message = "Session auto-ended on logout" });
         }
 
-        // ========== GET WORKER DASHBOARD DATA ==========
+        // ═══════════════════════════════════════════════════════════
+        // GET WORKER DASHBOARD DATA
+        // Returns statistics: today, week, month totals
+        // ═══════════════════════════════════════════════════════════
         
         [HttpGet("dashboard")]
         public async Task<IActionResult> GetDashboard([FromQuery] int userId)
@@ -277,10 +310,10 @@ namespace WorkTimePro.Api.Controllers
 
             var now = GetLocalTime();
             var today = now.Date;
-            var weekStart = today.AddDays(-(int)today.DayOfWeek + 1);
+            var weekStart = today.AddDays(-(int)today.DayOfWeek + 1);  // Monday
             var monthStart = new DateTime(now.Year, now.Month, 1);
 
-            // Calculate stats
+            // Calculate statistics
             var todayMinutes = user.WorkSessions
                 .Where(s => s.StartTime.Date == today)
                 .Sum(s => s.WorkedMinutes);
@@ -299,11 +332,6 @@ namespace WorkTimePro.Api.Controllers
                 .Where(s => s.StartTime.Date == today)
                 .Sum(s => s.PausedMinutes);
 
-            // Calculate earnings
-            var todayEarnings = CalculateEarnings(todayMinutes, user.HourlyRate);
-            var weekEarnings = CalculateEarnings(weekMinutes, user.HourlyRate);
-            var monthEarnings = CalculateEarnings(monthMinutes, user.HourlyRate);
-
             return Ok(new
             {
                 todayMinutes,
@@ -311,14 +339,14 @@ namespace WorkTimePro.Api.Controllers
                 monthMinutes,
                 totalSessions,
                 pausedMinutes = todayPaused,
-                todayEarnings,
-                weekEarnings,
-                monthEarnings,
                 needsApproval = user.NeedsReloginApproval && user.LastLogoutDate == today
             });
         }
 
-        // ========== GET WORK HISTORY ==========
+        // ═══════════════════════════════════════════════════════════
+        // GET WORK HISTORY
+        // Returns last 30 completed work sessions
+        // ═══════════════════════════════════════════════════════════
         
         [HttpGet("sessions")]
         public async Task<IActionResult> GetSessions([FromQuery] int userId)
@@ -339,22 +367,11 @@ namespace WorkTimePro.Api.Controllers
 
             return Ok(sessions);
         }
-
-        // Helper method to calculate earnings
-        private decimal CalculateEarnings(int minutes, decimal hourlyRate)
-        {
-            decimal hours = minutes / 60m;
-            
-            // Add 30 min paid break if worked > 6 hours
-            if (hours > 6)
-            {
-                hours += 0.5m;
-            }
-            
-            return Math.Round(hours * hourlyRate, 2);
-        }
     }
 
+    /// <summary>
+    /// Request body for worker actions (start, pause, resume, end)
+    /// </summary>
     public class WorkerActionRequest
     {
         public int UserId { get; set; }

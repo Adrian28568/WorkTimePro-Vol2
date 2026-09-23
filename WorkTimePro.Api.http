@@ -1,6 +1,0 @@
-@WorkTimePro.Api_HostAddress = http://localhost:5286
-
-GET {{WorkTimePro.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
